@@ -1,0 +1,374 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Empadronamiento App</title>
+  <link rel="manifest" href="manifest.json">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+  <style>
+    body { font-family: Arial, sans-serif; padding: 20px; background-color: #f4f4f9; max-width: 400px; margin: 0 auto; }
+    h2 { color: #333; text-align: center; }
+    .form-group { margin-bottom: 15px; }
+    label { display: block; font-weight: bold; margin-bottom: 5px; }
+    input, select { width: 100%; padding: 10px; box-sizing: border-box; border: 1px solid #ccc; border-radius: 5px; }
+    button { width: 100%; padding: 12px; margin-top: 10px; border: none; border-radius: 5px; font-weight: bold; cursor: pointer; }
+    
+    .btn-save { background-color: #28a745; color: white; }
+    .btn-zip { background-color: #007bff; color: white; margin-top: 30px; }
+    
+    .btn-descargar-final { 
+      background-color: #ffc107; color: #333; display: none; font-size: 1.1em; 
+      font-weight: bold; border: 2px solid #e0a800; text-align: center; 
+      text-decoration: none; padding: 12px; margin-top: 10px; border-radius: 5px; box-sizing: border-box;
+    }
+    
+    .btn-clear { background-color: #dc3545; color: white; }
+    
+    #status { margin-top: 15px; text-align: center; font-weight: bold; color: #0056b3; }
+    #lista-fotos { margin-top: 20px; font-weight: bold; text-align: center; color: #333; }
+    #urb-input { display: none; margin-top: 8px; border-color: #007bff; }
+    
+    .btn-toggle { background-color: #e2e3e5; color: #383d41; margin-top: 5px; font-size: 0.9em; padding: 8px; }
+    #contenedor-lista { display: none; margin-top: 10px; background: white; border: 1px solid #ddd; border-radius: 5px; max-height: 200px; overflow-y: auto; }
+    
+    .item-registro { padding: 10px; border-bottom: 1px solid #eee; font-size: 0.85em; color: #555; display: flex; align-items: center; }
+    .item-registro:last-child { border-bottom: none; }
+    .item-registro strong { color: #333; margin-right: 8px;}
+
+    .btn-previsualizar { background-color: #17a2b8; color: white; border: none; border-radius: 3px; padding: 4px 8px; margin-right: 8px; cursor: pointer; font-size: 0.8em; }
+
+    .modal { display: none; position: fixed; z-index: 1000; left: 0; top: 0; width: 100%; height: 100%; overflow: auto; background-color: rgba(0,0,0,0.8); }
+    .modal-content { background-color: #fefefe; margin: 15% auto; padding: 15px; border: 1px solid #888; border-radius: 8px; width: 85%; max-width: 350px; }
+    .close-modal { color: #aaa; float: right; font-size: 28px; font-weight: bold; cursor: pointer; }
+    .close-modal:hover, .close-modal:focus { color: black; text-decoration: none; }
+  </style>
+</head>
+<body>
+
+  <div id="modal-previsualizacion" class="modal">
+    <div class="modal-content">
+      <span class="close-modal" onclick="cerrarPrevisualizacion()">&times;</span>
+      <p id="label-previsualizacion" style="font-weight: bold; text-align: center; margin-bottom: 10px;"></p>
+      <img id="img-previsualizacion" src="" alt="Previsualización" style="max-width: 100%; height: auto; border-radius: 5px;">
+    </div>
+  </div>
+
+  <h2>📸 Registro de Predios</h2>
+
+  <div class="form-group">
+    <label>Urbanización:</label>
+    <select id="urb-select" onchange="verificarNuevaUrb()">
+    </select>
+    <input type="text" id="urb-input" placeholder="Escribe el nombre de la nueva urbanización" autocomplete="off">
+  </div>
+
+  <div class="form-group">
+    <label>Manzana:</label>
+    <input type="text" id="mz" placeholder="Ej: A, B, C..." autocomplete="off">
+  </div>
+
+  <div class="form-group">
+    <label>Lote:</label>
+    <input type="number" id="lote" placeholder="Ej: 1, 2, 15..." autocomplete="off">
+  </div>
+
+  <div class="form-group">
+    <label>Tomar Foto:</label>
+    <input type="file" id="foto" accept="image/*" capture="environment">
+  </div>
+
+  <button class="btn-save" onclick="guardarRegistro()">💾 Guardar en Memoria</button>
+  <div id="status"></div>
+
+  <div id="lista-fotos">Registros en memoria: 0</div>
+  <button id="btn-toggle" class="btn-toggle" onclick="toggleLista()">👁️ Mostrar detalles guardados</button>
+  
+  <div id="contenedor-lista"></div>
+
+  <hr style="margin-top: 30px;">
+
+  <button id="btn-preparar" class="btn-zip" onclick="prepararZIP()">📦 1. Preparar Archivo ZIP</button>
+  <a id="btn-descargar-enlace" class="btn-descargar-final">⬇️ 2. Descargar ZIP Listo</a>
+  <button class="btn-clear" onclick="limpiarBaseDatos()">🗑️ Borrar Todo (Fin del día)</button>
+
+  <script>
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.register('./sw.js').then(() => console.log('Service Worker registrado'));
+    }
+
+    function cargarUrbs() {
+      const select = document.getElementById('urb-select');
+      select.innerHTML = `<option value="">Seleccione una urbanización...</option><option value="NUEVA">➕ Escribir una nueva...</option>`;
+      let historialUrbs = JSON.parse(localStorage.getItem('historialUrbanizaciones')) || [];
+      historialUrbs.forEach(urb => {
+        const option = document.createElement('option');
+        option.value = urb;
+        option.text = urb;
+        select.insertBefore(option, select.lastElementChild);
+      });
+    }
+    cargarUrbs(); 
+
+    function verificarNuevaUrb() {
+      const select = document.getElementById('urb-select');
+      const input = document.getElementById('urb-input');
+      if (select.value === 'NUEVA') {
+        input.style.display = 'block';
+        input.focus();
+      } else {
+        input.style.display = 'none';
+        input.value = '';
+      }
+    }
+
+    let db;
+    const request = indexedDB.open("EmpadronamientoDB", 1);
+    request.onupgradeneeded = (e) => {
+      db = e.target.result;
+      if (!db.objectStoreNames.contains('registros')) {
+        db.createObjectStore('registros', { keyPath: 'id', autoIncrement: true });
+      }
+    };
+    request.onsuccess = (e) => { db = e.target.result; actualizarContador(); };
+    request.onerror = (e) => console.error("Error IndexedDB", e);
+
+    // --- FUNCIÓN ACTUALIZADA CON REDUCCIÓN DE CALIDAD A FULL HD ---
+    function guardarRegistro() {
+      const selectUrb = document.getElementById('urb-select');
+      const inputUrb = document.getElementById('urb-input');
+      let urb = selectUrb.value;
+      
+      if (urb === 'NUEVA') { urb = inputUrb.value.trim(); }
+
+      const mz = document.getElementById('mz').value.toUpperCase().trim();
+      const lote = document.getElementById('lote').value.trim();
+      const archivo = document.getElementById('foto').files[0];
+
+      if (!urb || urb === 'NUEVA' || !mz || !lote || !archivo) {
+        alert("Por favor completa todos los campos y toma la foto.");
+        return;
+      }
+
+      document.getElementById('status').innerText = "⏳ Procesando imagen...";
+
+      let historialUrbs = JSON.parse(localStorage.getItem('historialUrbanizaciones')) || [];
+      if (!historialUrbs.includes(urb)) {
+        historialUrbs.push(urb);
+        historialUrbs.sort(); 
+        localStorage.setItem('historialUrbanizaciones', JSON.stringify(historialUrbs));
+        cargarUrbs(); 
+        document.getElementById('urb-select').value = urb;
+        inputUrb.style.display = 'none';
+        inputUrb.value = '';
+      }
+
+      const reader = new FileReader();
+      reader.onload = function(event) {
+        // Creamos una imagen virtual
+        const img = new Image();
+        img.onload = function() {
+          // Medidas máximas para Full HD
+          const MAX_WIDTH = 1920;
+          const MAX_HEIGHT = 1920;
+          let width = img.width;
+          let height = img.height;
+
+          // Calculamos la nueva proporción sin deformar la foto
+          if (width > height) {
+            if (width > MAX_WIDTH) {
+              height = Math.round(height * MAX_WIDTH / width);
+              width = MAX_WIDTH;
+            }
+          } else {
+            if (height > MAX_HEIGHT) {
+              width = Math.round(width * MAX_HEIGHT / height);
+              height = MAX_HEIGHT;
+            }
+          }
+
+          // Creamos un lienzo para redibujar la imagen más pequeña
+          const canvas = document.createElement('canvas');
+          canvas.width = width;
+          canvas.height = height;
+          const ctx = canvas.getContext('2d');
+          ctx.drawImage(img, 0, 0, width, height);
+
+          // Extraemos la imagen comprimida (JPEG al 80% de calidad)
+          const dataUrl = canvas.toDataURL('image/jpeg', 0.8);
+          const base64Data = dataUrl.split(',')[1]; 
+          
+          const registro = { urb, mz, lote, fotoBase64: base64Data, fecha: new Date().toISOString() };
+          
+          // Guardamos en la base de datos
+          const tx = db.transaction("registros", "readwrite");
+          const store = tx.objectStore("registros");
+          store.add(registro);
+
+          tx.oncomplete = () => {
+            document.getElementById('status').innerText = `✅ Lote ${lote} guardado con éxito!`;
+            document.getElementById('mz').value = ''; 
+            document.getElementById('lote').value = '';
+            document.getElementById('foto').value = '';
+            
+            const btnDescargar = document.getElementById('btn-descargar-enlace');
+            btnDescargar.style.display = "none";
+            btnDescargar.href = "";
+            
+            actualizarContador();
+            setTimeout(() => document.getElementById('status').innerText = '', 3000);
+          };
+        };
+        img.src = event.target.result; // Pasamos la foto original a la imagen virtual
+      };
+      reader.readAsDataURL(archivo);
+    }
+
+    function toggleLista() {
+      const contenedor = document.getElementById('contenedor-lista');
+      const btn = document.getElementById('btn-toggle');
+      if (contenedor.style.display === 'none' || contenedor.style.display === '') {
+        contenedor.style.display = 'block';
+        btn.innerHTML = '🙈 Ocultar detalles guardados';
+      } else {
+        contenedor.style.display = 'none';
+        btn.innerHTML = '👁️ Mostrar detalles guardados';
+      }
+    }
+
+    function actualizarContador() {
+      const tx = db.transaction("registros", "readonly");
+      const store = tx.objectStore("registros");
+      const request = store.getAll();
+      
+      request.onsuccess = () => {
+        const registros = request.result;
+        document.getElementById('lista-fotos').innerText = `Registros en memoria: ${registros.length}`;
+        const contenedor = document.getElementById('contenedor-lista');
+        
+        if (registros.length === 0) {
+          contenedor.innerHTML = '<div class="item-registro" style="text-align:center;">No hay registros aún.</div>';
+        } else {
+          let html = '';
+          registros.slice().reverse().forEach((reg, index) => {
+            let numeroReal = registros.length - index; 
+            html += `
+              <div class="item-registro">
+                <strong>#${numeroReal}</strong>
+                <button class="btn-previsualizar" onclick="iniciarPrevisualizacion(${reg.id})">👁️ Foto</button>
+                <span>Urb: ${reg.urb} | Mz: ${reg.mz} | Lote: ${reg.lote}</span>
+              </div>
+            `;
+          });
+          contenedor.innerHTML = html;
+        }
+      };
+    }
+
+    function iniciarPrevisualizacion(id) {
+      const tx = db.transaction("registros", "readonly");
+      const store = tx.objectStore("registros");
+      const request = store.get(id);
+      request.onsuccess = () => {
+        const reg = request.result;
+        mostrarPrevisualizacion(reg.fotoBase64, reg.urb, reg.mz, reg.lote);
+      };
+    }
+
+    function mostrarPrevisualizacion(data, urb, mz, lote) {
+      document.getElementById('img-previsualizacion').src = `data:image/jpeg;base64,${data}`;
+      document.getElementById('label-previsualizacion').innerText = `Urb: ${urb} | Mz: ${mz} | Lote: ${lote}`;
+      document.getElementById('modal-previsualizacion').style.display = "block";
+    }
+
+    function cerrarPrevisualizacion() {
+      document.getElementById('modal-previsualizacion').style.display = "none";
+      document.getElementById('img-previsualizacion').src = "";
+    }
+    
+    window.onclick = function(event) {
+      const modal = document.getElementById('modal-previsualizacion');
+      if (event.target == modal) { cerrarPrevisualizacion(); }
+    }
+
+    function prepararZIP() {
+      const tx = db.transaction("registros", "readonly");
+      const store = tx.objectStore("registros");
+      const request = store.getAll();
+
+      request.onsuccess = () => {
+        const registros = request.result;
+        if (registros.length === 0) {
+          alert("No hay registros para exportar.");
+          return;
+        }
+
+        const btnPreparar = document.getElementById('btn-preparar');
+        const btnDescargarEnlace = document.getElementById('btn-descargar-enlace');
+        
+        btnPreparar.disabled = true;
+        document.getElementById('status').innerText = "⏳ Empaquetando fotos, espera...";
+        
+        try {
+          const zip = new JSZip();
+
+          registros.forEach(reg => {
+            const nombreUrb = reg.urb.replace(/[^a-zA-Z0-9\s-]/g, '').replace(/\s+/g, '_');
+            const nombreMz = reg.mz.replace(/[^a-zA-Z0-9\s-]/g, '').replace(/\s+/g, '_');
+            
+            const carpetaUrb = zip.folder(`Urb_${nombreUrb}`);
+            const carpetaMz = carpetaUrb.folder(`Manzana_${nombreMz}`);
+            carpetaMz.file(`Lote_${reg.lote}.jpg`, reg.fotoBase64, {base64: true});
+          });
+
+          zip.generateAsync({type:"base64"}).then(function(base64) {
+            const dataUri = "data:application/zip;base64," + base64;
+            const fecha = new Date().toISOString().split('T')[0];
+            
+            btnDescargarEnlace.download = `Empadronamiento_${fecha}.zip`;
+            btnDescargarEnlace.href = dataUri;
+            
+            document.getElementById('status').innerText = "✅ ¡ZIP Listo! Toca el botón amarillo.";
+            btnPreparar.disabled = false;
+            
+            btnDescargarEnlace.style.display = "block";
+            btnDescargarEnlace.onclick = function() {
+              document.getElementById('status').innerText = "⬇️ Descarga en progreso...";
+            };
+            
+          }).catch(function(error) {
+            alert("Error al comprimir: " + error.message);
+            btnPreparar.disabled = false;
+          });
+
+        } catch (error) {
+          alert("Ocurrió un error: " + error.message);
+          btnPreparar.disabled = false;
+        }
+      };
+    }
+
+    function limpiarBaseDatos() {
+      if(confirm("⚠️ ¿Estás seguro? Esto borrará todas las fotos y la lista de urbanizaciones guardadas. Asegúrate de haber descargado el ZIP primero.")){
+        const tx = db.transaction("registros", "readwrite");
+        const store = tx.objectStore("registros");
+        store.clear();
+        
+        tx.oncomplete = () => {
+          localStorage.removeItem('historialUrbanizaciones');
+          cargarUrbs();
+          document.getElementById('urb-input').style.display = 'none';
+          document.getElementById('urb-input').value = '';
+          
+          const btnDescargar = document.getElementById('btn-descargar-enlace');
+          btnDescargar.style.display = "none";
+          btnDescargar.href = "";
+          
+          alert("Base de datos y lista limpias para un nuevo día.");
+          actualizarContador();
+        };
+      }
+    }
+  </script>
+</body>
+</html>
