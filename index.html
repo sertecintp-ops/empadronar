@@ -57,19 +57,19 @@
   <h2>📸 Registro de Predios</h2>
 
   <div class="form-group">
-    <label>Urbanización:</label>
+    <label>Urbanización, Asociación o Sector:</label>
     <select id="urb-select" onchange="verificarNuevaUrb()">
     </select>
     <input type="text" id="urb-input" placeholder="Escribe el nombre de la nueva urbanización" autocomplete="off">
   </div>
 
   <div class="form-group">
-    <label>Manzana:</label>
+    <label>Manzana o Parcela:</label>
     <input type="text" id="mz" placeholder="Ej: A, B, C..." autocomplete="off">
   </div>
 
   <div class="form-group">
-    <label>Lote:</label>
+    <label>Lote o parcela:</label>
     <input type="number" id="lote" placeholder="Ej: 1, 2, 15..." autocomplete="off">
   </div>
 
@@ -316,9 +316,9 @@
             const nombreUrb = reg.urb.replace(/[^a-zA-Z0-9\s-]/g, '').replace(/\s+/g, '_');
             const nombreMz = reg.mz.replace(/[^a-zA-Z0-9\s-]/g, '').replace(/\s+/g, '_');
             
-            const carpetaUrb = zip.folder(`Urb_${nombreUrb}`);
-            const carpetaMz = carpetaUrb.folder(`Manzana_${nombreMz}`);
-            carpetaMz.file(`Lote_${reg.lote}.jpg`, reg.fotoBase64, {base64: true});
+            const carpetaUrb = zip.folder(`${nombreUrb}`);
+            const carpetaMz = carpetaUrb.folder(`${nombreMz}`);
+            carpetaMz.file(`${reg.lote}.jpg`, reg.fotoBase64, {base64: true});
           });
 
           zip.generateAsync({type:"base64"}).then(function(base64) {
