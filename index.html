@@ -57,20 +57,20 @@
   <h2>📸 Registro de Predios</h2>
 
   <div class="form-group">
-    <label>Urbanización, Asociación o Sector:</label>
+    <label>Urbanización:</label>
     <select id="urb-select" onchange="verificarNuevaUrb()">
     </select>
     <input type="text" id="urb-input" placeholder="Escribe el nombre de la nueva urbanización" autocomplete="off">
   </div>
 
   <div class="form-group">
-    <label>Manzana o Parcela:</label>
+    <label>Manzana:</label>
     <input type="text" id="mz" placeholder="Ej: A, B, C..." autocomplete="off">
   </div>
 
   <div class="form-group">
-    <label>Lote o parcela:</label>
-    <input type="text" id="lote" placeholder="Ej: 1, 2, 15..." autocomplete="off">
+    <label>Lote:</label>
+    <input type="text" id="lote" placeholder="Ej: 1, 2, 15A..." autocomplete="off">
   </div>
 
   <div class="form-group">
@@ -133,16 +133,21 @@
     request.onsuccess = (e) => { db = e.target.result; actualizarContador(); };
     request.onerror = (e) => console.error("Error IndexedDB", e);
 
-    // --- FUNCIÓN ACTUALIZADA CON REDUCCIÓN DE CALIDAD A FULL HD ---
     function guardarRegistro() {
       const selectUrb = document.getElementById('urb-select');
       const inputUrb = document.getElementById('urb-input');
-      let urb = selectUrb.value;
       
-      if (urb === 'NUEVA') { urb = inputUrb.value.trim(); }
+      // CAMBIADO: Forzamos mayúsculas desde la captura de la urbanización
+      let urb = selectUrb.value;
+      if (urb === 'NUEVA') { 
+        urb = inputUrb.value.toUpperCase().trim(); 
+      } else {
+        urb = urb.toUpperCase().trim();
+      }
 
+      // CAMBIADO: Forzamos mayúsculas en manzana y lote
       const mz = document.getElementById('mz').value.toUpperCase().trim();
-      const lote = document.getElementById('lote').value.trim();
+      const lote = document.getElementById('lote').value.toUpperCase().trim();
       const archivo = document.getElementById('foto').files[0];
 
       if (!urb || urb === 'NUEVA' || !mz || !lote || !archivo) {
@@ -165,16 +170,13 @@
 
       const reader = new FileReader();
       reader.onload = function(event) {
-        // Creamos una imagen virtual
         const img = new Image();
         img.onload = function() {
-          // Medidas máximas para Full HD
           const MAX_WIDTH = 1920;
           const MAX_HEIGHT = 1920;
           let width = img.width;
           let height = img.height;
 
-          // Calculamos la nueva proporción sin deformar la foto
           if (width > height) {
             if (width > MAX_WIDTH) {
               height = Math.round(height * MAX_WIDTH / width);
@@ -187,20 +189,17 @@
             }
           }
 
-          // Creamos un lienzo para redibujar la imagen más pequeña
           const canvas = document.createElement('canvas');
           canvas.width = width;
           canvas.height = height;
           const ctx = canvas.getContext('2d');
           ctx.drawImage(img, 0, 0, width, height);
 
-          // Extraemos la imagen comprimida (JPEG al 80% de calidad)
           const dataUrl = canvas.toDataURL('image/jpeg', 0.8);
           const base64Data = dataUrl.split(',')[1]; 
           
           const registro = { urb, mz, lote, fotoBase64: base64Data, fecha: new Date().toISOString() };
           
-          // Guardamos en la base de datos
           const tx = db.transaction("registros", "readwrite");
           const store = tx.objectStore("registros");
           store.add(registro);
@@ -219,7 +218,7 @@
             setTimeout(() => document.getElementById('status').innerText = '', 3000);
           };
         };
-        img.src = event.target.result; // Pasamos la foto original a la imagen virtual
+        img.src = event.target.result; 
       };
       reader.readAsDataURL(archivo);
     }
