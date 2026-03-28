@@ -11,7 +11,7 @@
     h2 { color: #333; text-align: center; }
     .form-group { margin-bottom: 15px; }
     label { display: block; font-weight: bold; margin-bottom: 5px; }
-    input, select { width: 100%; padding: 10px; box-sizing: border-box; border: 1px solid #ccc; border-radius: 5px; }
+    input[type="text"], input[type="number"], select { width: 100%; padding: 10px; box-sizing: border-box; border: 1px solid #ccc; border-radius: 5px; }
     button { width: 100%; padding: 12px; margin-top: 10px; border: none; border-radius: 5px; font-weight: bold; cursor: pointer; }
     
     .btn-save { background-color: #28a745; color: white; }
@@ -42,6 +42,12 @@
     .modal-content { background-color: #fefefe; margin: 15% auto; padding: 15px; border: 1px solid #888; border-radius: 8px; width: 85%; max-width: 350px; }
     .close-modal { color: #aaa; float: right; font-size: 28px; font-weight: bold; cursor: pointer; }
     .close-modal:hover, .close-modal:focus { color: black; text-decoration: none; }
+
+    /* NUEVO: Estilos para los botones duales de foto */
+    .botones-foto { display: flex; gap: 10px; margin-top: 5px; }
+    .btn-opcion-foto { flex: 1; background-color: #6c757d; color: white; padding: 10px; border-radius: 5px; margin-top: 0; }
+    .btn-opcion-foto:active { background-color: #5a6268; }
+    #indicador-foto { font-size: 0.9em; color: #28a745; font-weight: bold; display: none; margin-top: 8px; text-align: center;}
   </style>
 </head>
 <body>
@@ -70,12 +76,20 @@
 
   <div class="form-group">
     <label>Lote:</label>
-    <input type="text" id="lote" placeholder="Ej: LT 01, LT 02-B, PARCELA 03..." autocomplete="off">
+    <input type="text" id="lote" placeholder="Ej: LT 1, LT 2-B, PARCELA 03..." autocomplete="off">
   </div>
 
   <div class="form-group">
-    <label>Agregar Foto:</label>
-    <input type="file" id="foto" accept="image/*">
+    <label>Añadir Foto:</label>
+    <div class="botones-foto">
+      <button type="button" class="btn-opcion-foto" onclick="document.getElementById('foto-camara').click()">📷 Cámara</button>
+      <button type="button" class="btn-opcion-foto" onclick="document.getElementById('foto-galeria').click()">🖼️ Galería</button>
+    </div>
+    
+    <input type="file" id="foto-camara" accept="image/*" capture="environment" style="display:none" onchange="manejarFoto(this)">
+    <input type="file" id="foto-galeria" accept="image/*" style="display:none" onchange="manejarFoto(this)">
+    
+    <div id="indicador-foto">✅ Imagen seleccionada</div>
   </div>
 
   <button class="btn-save" onclick="guardarRegistro()">💾 Guardar en Memoria</button>
@@ -122,6 +136,21 @@
       }
     }
 
+    // NUEVO: Función para manejar la selección de foto y mostrar el check verde
+    function manejarFoto(input) {
+      if (input.files && input.files[0]) {
+        document.getElementById('indicador-foto').style.display = 'block';
+        // Si usamos la cámara, borramos lo que haya en galería y viceversa, para evitar duplicados
+        if (input.id === 'foto-camara') {
+          document.getElementById('foto-galeria').value = '';
+        } else {
+          document.getElementById('foto-camara').value = '';
+        }
+      } else {
+        document.getElementById('indicador-foto').style.display = 'none';
+      }
+    }
+
     let db;
     const request = indexedDB.open("EmpadronamientoDB", 1);
     request.onupgradeneeded = (e) => {
@@ -137,7 +166,6 @@
       const selectUrb = document.getElementById('urb-select');
       const inputUrb = document.getElementById('urb-input');
       
-      // CAMBIADO: Forzamos mayúsculas desde la captura de la urbanización
       let urb = selectUrb.value;
       if (urb === 'NUEVA') { 
         urb = inputUrb.value.toUpperCase().trim(); 
@@ -145,13 +173,14 @@
         urb = urb.toUpperCase().trim();
       }
 
-      // CAMBIADO: Forzamos mayúsculas en manzana y lote
       const mz = document.getElementById('mz').value.toUpperCase().trim();
       const lote = document.getElementById('lote').value.toUpperCase().trim();
-      const archivo = document.getElementById('foto').files[0];
+      
+      // NUEVO: Verificamos de cuál de los dos botones vino la foto
+      const archivo = document.getElementById('foto-camara').files[0] || document.getElementById('foto-galeria').files[0];
 
       if (!urb || urb === 'NUEVA' || !mz || !lote || !archivo) {
-        alert("Por favor completa todos los campos y toma la foto.");
+        alert("Por favor completa todos los campos y añade una foto (Cámara o Galería).");
         return;
       }
 
@@ -206,9 +235,13 @@
 
           tx.oncomplete = () => {
             document.getElementById('status').innerText = `✅ Lote ${lote} guardado con éxito!`;
+            
+            // Limpiamos los campos
             document.getElementById('mz').value = ''; 
             document.getElementById('lote').value = '';
-            document.getElementById('foto').value = '';
+            document.getElementById('foto-camara').value = '';
+            document.getElementById('foto-galeria').value = '';
+            document.getElementById('indicador-foto').style.display = 'none';
             
             const btnDescargar = document.getElementById('btn-descargar-enlace');
             btnDescargar.style.display = "none";
@@ -315,9 +348,9 @@
             const nombreUrb = reg.urb.replace(/[^a-zA-Z0-9\s-]/g, '').replace(/\s+/g, '_');
             const nombreMz = reg.mz.replace(/[^a-zA-Z0-9\s-]/g, '').replace(/\s+/g, '_');
             
-            const carpetaUrb = zip.folder(`${nombreUrb}`);
-            const carpetaMz = carpetaUrb.folder(`${nombreMz}`);
-            carpetaMz.file(`${reg.lote}.jpg`, reg.fotoBase64, {base64: true});
+            const carpetaUrb = zip.folder(`Urb_${nombreUrb}`);
+            const carpetaMz = carpetaUrb.folder(`Manzana_${nombreMz}`);
+            carpetaMz.file(`Lote_${reg.lote}.jpg`, reg.fotoBase64, {base64: true});
           });
 
           zip.generateAsync({type:"base64"}).then(function(base64) {
