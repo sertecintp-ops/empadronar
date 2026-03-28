@@ -39,15 +39,21 @@
     .btn-previsualizar { background-color: #17a2b8; color: white; border: none; border-radius: 3px; padding: 4px 8px; margin-right: 8px; cursor: pointer; font-size: 0.8em; }
 
     .modal { display: none; position: fixed; z-index: 1000; left: 0; top: 0; width: 100%; height: 100%; overflow: auto; background-color: rgba(0,0,0,0.8); }
-    .modal-content { background-color: #fefefe; margin: 15% auto; padding: 15px; border: 1px solid #888; border-radius: 8px; width: 85%; max-width: 350px; }
+    .modal-content { background-color: #fefefe; margin: 10% auto; padding: 15px; border: 1px solid #888; border-radius: 8px; width: 90%; max-width: 350px; }
     .close-modal { color: #aaa; float: right; font-size: 28px; font-weight: bold; cursor: pointer; }
     .close-modal:hover, .close-modal:focus { color: black; text-decoration: none; }
 
-    /* NUEVO: Estilos para los botones duales de foto */
     .botones-foto { display: flex; gap: 10px; margin-top: 5px; }
     .btn-opcion-foto { flex: 1; background-color: #6c757d; color: white; padding: 10px; border-radius: 5px; margin-top: 0; }
     .btn-opcion-foto:active { background-color: #5a6268; }
     #indicador-foto { font-size: 0.9em; color: #28a745; font-weight: bold; display: none; margin-top: 8px; text-align: center;}
+
+    /* NUEVO: Estilos para la edición en el modal */
+    .edit-container { display: flex; flex-direction: column; gap: 8px; margin-bottom: 15px; }
+    .edit-row { display: flex; gap: 8px; }
+    .edit-row input { flex: 1; padding: 8px; border: 1px solid #ccc; border-radius: 4px; font-size: 0.9em; text-transform: uppercase;}
+    .btn-update { background-color: #ffc107; border: none; padding: 10px; border-radius: 4px; font-weight: bold; cursor: pointer; color: #333; margin-top: 5px;}
+    .btn-delete-item { background-color: #dc3545; border: none; padding: 10px; border-radius: 4px; font-weight: bold; cursor: pointer; color: white; margin-top: 5px;}
   </style>
 </head>
 <body>
@@ -55,8 +61,28 @@
   <div id="modal-previsualizacion" class="modal">
     <div class="modal-content">
       <span class="close-modal" onclick="cerrarPrevisualizacion()">&times;</span>
-      <p id="label-previsualizacion" style="font-weight: bold; text-align: center; margin-bottom: 10px;"></p>
-      <img id="img-previsualizacion" src="" alt="Previsualización" style="max-width: 100%; height: auto; border-radius: 5px;">
+      <h3 style="margin-top: 0; text-align: center; font-size: 1.1em; color: #333;">Detalles del Lote</h3>
+      
+      <div class="edit-container">
+        <label style="font-size: 0.8em; margin-bottom: -5px; color: #666;">Urbanización:</label>
+        <input type="text" id="edit-urb" autocomplete="off">
+        
+        <div class="edit-row">
+          <div style="flex: 1;">
+            <label style="font-size: 0.8em; color: #666;">Manzana:</label>
+            <input type="text" id="edit-mz" autocomplete="off" style="width: 100%;">
+          </div>
+          <div style="flex: 1;">
+            <label style="font-size: 0.8em; color: #666;">Lote:</label>
+            <input type="text" id="edit-lote" autocomplete="off" style="width: 100%;">
+          </div>
+        </div>
+        
+        <button class="btn-update" onclick="guardarEdicion()">💾 Guardar Cambios</button>
+        <button class="btn-delete-item" onclick="eliminarRegistroModal()">🗑️ Eliminar Lote</button>
+      </div>
+
+      <img id="img-previsualizacion" src="" alt="Previsualización" style="max-width: 100%; height: auto; border-radius: 5px; display: block; margin: 0 auto;">
     </div>
   </div>
 
@@ -69,7 +95,7 @@
     <input type="text" id="urb-input" placeholder="Escribe el nombre de la nueva urbanización" autocomplete="off">
   </div>
 
-  <div class="form-group">
+    <div class="form-group">
     <label>Manzana:</label>
     <input type="text" id="mz" placeholder="Ej: MZ A, MZ 01, PARCELA 02..." autocomplete="off">
   </div>
@@ -111,6 +137,9 @@
       navigator.serviceWorker.register('./sw.js').then(() => console.log('Service Worker registrado'));
     }
 
+    // NUEVO: Variable global para saber qué lote estamos editando
+    let idEdicionActual = null;
+
     function cargarUrbs() {
       const select = document.getElementById('urb-select');
       select.innerHTML = `<option value="">Seleccione una urbanización...</option><option value="NUEVA">➕ Escribir una nueva...</option>`;
@@ -136,11 +165,9 @@
       }
     }
 
-    // NUEVO: Función para manejar la selección de foto y mostrar el check verde
     function manejarFoto(input) {
       if (input.files && input.files[0]) {
         document.getElementById('indicador-foto').style.display = 'block';
-        // Si usamos la cámara, borramos lo que haya en galería y viceversa, para evitar duplicados
         if (input.id === 'foto-camara') {
           document.getElementById('foto-galeria').value = '';
         } else {
@@ -175,12 +202,10 @@
 
       const mz = document.getElementById('mz').value.toUpperCase().trim();
       const lote = document.getElementById('lote').value.toUpperCase().trim();
-      
-      // NUEVO: Verificamos de cuál de los dos botones vino la foto
       const archivo = document.getElementById('foto-camara').files[0] || document.getElementById('foto-galeria').files[0];
 
       if (!urb || urb === 'NUEVA' || !mz || !lote || !archivo) {
-        alert("Por favor completa todos los campos y añade una foto (Cámara o Galería).");
+        alert("Por favor completa todos los campos y añade una foto.");
         return;
       }
 
@@ -235,18 +260,13 @@
 
           tx.oncomplete = () => {
             document.getElementById('status').innerText = `✅ Lote ${lote} guardado con éxito!`;
-            
-            // Limpiamos los campos
             document.getElementById('mz').value = ''; 
             document.getElementById('lote').value = '';
             document.getElementById('foto-camara').value = '';
             document.getElementById('foto-galeria').value = '';
             document.getElementById('indicador-foto').style.display = 'none';
             
-            const btnDescargar = document.getElementById('btn-descargar-enlace');
-            btnDescargar.style.display = "none";
-            btnDescargar.href = "";
-            
+            ocultarBotonDescarga();
             actualizarContador();
             setTimeout(() => document.getElementById('status').innerText = '', 3000);
           };
@@ -287,8 +307,8 @@
             html += `
               <div class="item-registro">
                 <strong>#${numeroReal}</strong>
-                <button class="btn-previsualizar" onclick="iniciarPrevisualizacion(${reg.id})">👁️ Foto</button>
-                <span>Urb: ${reg.urb} | Mz: ${reg.mz} | Lote: ${reg.lote}</span>
+                <button class="btn-previsualizar" onclick="iniciarPrevisualizacion(${reg.id})">👁️ Editar / Foto</button>
+                <span>${reg.urb} | ${reg.mz} | ${reg.lote}</span>
               </div>
             `;
           });
@@ -297,25 +317,96 @@
       };
     }
 
+    // --- NUEVAS FUNCIONES DE EDICIÓN Y BORRADO ---
     function iniciarPrevisualizacion(id) {
       const tx = db.transaction("registros", "readonly");
       const store = tx.objectStore("registros");
       const request = store.get(id);
       request.onsuccess = () => {
         const reg = request.result;
-        mostrarPrevisualizacion(reg.fotoBase64, reg.urb, reg.mz, reg.lote);
+        idEdicionActual = id; // Guardamos el ID del lote que se está editando
+        
+        // Llenamos los campos del modal
+        document.getElementById('edit-urb').value = reg.urb;
+        document.getElementById('edit-mz').value = reg.mz;
+        document.getElementById('edit-lote').value = reg.lote;
+        document.getElementById('img-previsualizacion').src = `data:image/jpeg;base64,${reg.fotoBase64}`;
+        
+        // Mostramos el modal
+        document.getElementById('modal-previsualizacion').style.display = "block";
       };
     }
 
-    function mostrarPrevisualizacion(data, urb, mz, lote) {
-      document.getElementById('img-previsualizacion').src = `data:image/jpeg;base64,${data}`;
-      document.getElementById('label-previsualizacion').innerText = `Urb: ${urb} | Mz: ${mz} | Lote: ${lote}`;
-      document.getElementById('modal-previsualizacion').style.display = "block";
+    function guardarEdicion() {
+      if (!idEdicionActual) return;
+
+      const nuevaUrb = document.getElementById('edit-urb').value.toUpperCase().trim();
+      const nuevaMz = document.getElementById('edit-mz').value.toUpperCase().trim();
+      const nuevoLote = document.getElementById('edit-lote').value.toUpperCase().trim();
+
+      if (!nuevaUrb || !nuevaMz || !nuevoLote) {
+        alert("Los campos no pueden estar vacíos.");
+        return;
+      }
+
+      // Traemos el registro, lo actualizamos y lo volvemos a guardar
+      const tx = db.transaction("registros", "readwrite");
+      const store = tx.objectStore("registros");
+      const request = store.get(idEdicionActual);
+
+      request.onsuccess = () => {
+        const reg = request.result;
+        reg.urb = nuevaUrb;
+        reg.mz = nuevaMz;
+        reg.lote = nuevoLote;
+        
+        const updateRequest = store.put(reg);
+        updateRequest.onsuccess = () => {
+          
+          // Guardamos la urbanización nueva en el historial si no existía
+          let historialUrbs = JSON.parse(localStorage.getItem('historialUrbanizaciones')) || [];
+          if (!historialUrbs.includes(nuevaUrb)) {
+            historialUrbs.push(nuevaUrb);
+            historialUrbs.sort(); 
+            localStorage.setItem('historialUrbanizaciones', JSON.stringify(historialUrbs));
+            cargarUrbs(); 
+          }
+
+          cerrarPrevisualizacion();
+          actualizarContador();
+          ocultarBotonDescarga(); // Hay que generar el ZIP de nuevo
+          
+          alert("✅ Datos actualizados correctamente.");
+        };
+      };
     }
+
+    function eliminarRegistroModal() {
+      if (!idEdicionActual) return;
+      if (confirm("⚠️ ¿Estás completamente seguro de borrar esta foto y registro?")) {
+        const tx = db.transaction("registros", "readwrite");
+        const store = tx.objectStore("registros");
+        store.delete(idEdicionActual);
+        
+        tx.oncomplete = () => {
+          cerrarPrevisualizacion();
+          actualizarContador();
+          ocultarBotonDescarga();
+        };
+      }
+    }
+
+    function ocultarBotonDescarga() {
+      const btnDescargar = document.getElementById('btn-descargar-enlace');
+      btnDescargar.style.display = "none";
+      btnDescargar.href = "";
+    }
+    // --- FIN DE FUNCIONES DE EDICIÓN ---
 
     function cerrarPrevisualizacion() {
       document.getElementById('modal-previsualizacion').style.display = "none";
       document.getElementById('img-previsualizacion').src = "";
+      idEdicionActual = null;
     }
     
     window.onclick = function(event) {
@@ -348,9 +439,9 @@
             const nombreUrb = reg.urb.replace(/[^a-zA-Z0-9\s-]/g, '').replace(/\s+/g, '_');
             const nombreMz = reg.mz.replace(/[^a-zA-Z0-9\s-]/g, '').replace(/\s+/g, '_');
             
-            const carpetaUrb = zip.folder(`Urb_${nombreUrb}`);
-            const carpetaMz = carpetaUrb.folder(`Manzana_${nombreMz}`);
-            carpetaMz.file(`Lote_${reg.lote}.jpg`, reg.fotoBase64, {base64: true});
+            const carpetaUrb = zip.folder(`${nombreUrb}`);
+            const carpetaMz = carpetaUrb.folder(`${nombreMz}`);
+            carpetaMz.file(`${reg.lote}.jpg`, reg.fotoBase64, {base64: true});
           });
 
           zip.generateAsync({type:"base64"}).then(function(base64) {
@@ -392,9 +483,7 @@
           document.getElementById('urb-input').style.display = 'none';
           document.getElementById('urb-input').value = '';
           
-          const btnDescargar = document.getElementById('btn-descargar-enlace');
-          btnDescargar.style.display = "none";
-          btnDescargar.href = "";
+          ocultarBotonDescarga();
           
           alert("Base de datos y lista limpias para un nuevo día.");
           actualizarContador();
